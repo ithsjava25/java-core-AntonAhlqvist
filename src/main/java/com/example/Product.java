@@ -18,7 +18,7 @@ public abstract class Product {
         this.price = price;
     }
 
-    public UUID id() {
+    public UUID uuid() {
         return id;
     }
 
@@ -40,4 +40,6 @@ public abstract class Product {
         }
         this.price = newPrice;
     }
+
+    public abstract String productDetails();
 }
