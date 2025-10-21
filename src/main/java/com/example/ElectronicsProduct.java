@@ -20,4 +20,19 @@ public class ElectronicsProduct extends Product implements Shippable {
     public BigDecimal weight() {
         return weight;
     }
+
+    @Override
+    public BigDecimal calculateShippingCost() {
+
+        if (weight.compareTo(BigDecimal.valueOf(5)) > 0) {
+            return BigDecimal.valueOf(128);
+        } else {
+            return BigDecimal.valueOf(79);
+        }
+    }
+
+    @Override
+    public String productDetails() {
+        return ("Something");
+    }
 }
