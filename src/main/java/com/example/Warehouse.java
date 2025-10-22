@@ -78,6 +78,9 @@ public final class Warehouse {
     }
 
     public Map<Category, List<Product>> getProductsGroupedByCategories() {
+        if (products.isEmpty()) {
+            return new HashMap<>();
+        }
         return products.stream()
                 .collect(Collectors.groupingBy(Product::category));
     }
