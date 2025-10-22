@@ -115,16 +115,17 @@ class WarehouseAnalyzer {
             List<Product> items = e.getValue();
             BigDecimal weightedSum = BigDecimal.ZERO;
             double weightSum = 0.0;
+
             for (Product p : items) {
                 if (p instanceof Shippable s) {
-                    double w = Optional.ofNullable(s.weight()).orElse(0.0);
-                    if (w > 0) {
-                        BigDecimal wBD = BigDecimal.valueOf(w);
-                        weightedSum = weightedSum.add(p.price().multiply(wBD));
-                        weightSum += w;
+                    BigDecimal weightValue = Optional.ofNullable(s.weight()).orElse(BigDecimal.ZERO);
+                    if (weightValue.compareTo(BigDecimal.ZERO) > 0) {
+                        weightedSum = weightedSum.add(p.price().multiply(weightValue));
+                        weightSum += weightValue.doubleValue();
                     }
                 }
             }
+
             BigDecimal avg;
             if (weightSum > 0) {
                 avg = weightedSum.divide(BigDecimal.valueOf(weightSum), 2, RoundingMode.HALF_UP);
@@ -134,6 +135,7 @@ class WarehouseAnalyzer {
             }
             result.put(cat, avg);
         }
+
         return result;
     }
     
@@ -175,33 +177,50 @@ class WarehouseAnalyzer {
      * @return list of ShippingGroup objects covering all shippable products
      */
     public List<ShippingGroup> optimizeShippingGroups(BigDecimal maxWeightPerGroup) {
-        double maxW = maxWeightPerGroup.doubleValue();
+        BigDecimal maxW = maxWeightPerGroup;
         List<Shippable> items = warehouse.shippableProducts();
-        // Sort by descending weight (First-Fit Decreasing)
-        items.sort((a, b) -> Double.compare(Objects.requireNonNullElse(b.weight(), 0.0), Objects.requireNonNullElse(a.weight(), 0.0)));
+
+        // Sortera fallande efter vikt (tyngst först)
+        items.sort((a, b) -> {
+            BigDecimal bw = Objects.requireNonNullElse(b.weight(), BigDecimal.ZERO);
+            BigDecimal aw = Objects.requireNonNullElse(a.weight(), BigDecimal.ZERO);
+            return bw.compareTo(aw);
+        });
+
         List<List<Shippable>> bins = new ArrayList<>();
+
         for (Shippable item : items) {
-            double w = Objects.requireNonNullElse(item.weight(), 0.0);
+            BigDecimal w = Objects.requireNonNullElse(item.weight(), BigDecimal.ZERO);
             boolean placed = false;
+
             for (List<Shippable> bin : bins) {
-                double binWeight = bin.stream().map(Shippable::weight).reduce(0.0, Double::sum);
-                if (binWeight + w <= maxW) {
+                BigDecimal binWeight = bin.stream()
+                        .map(s -> Objects.requireNonNullElse(s.weight(), BigDecimal.ZERO))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                if (binWeight.add(w).compareTo(maxW) <= 0) {
                     bin.add(item);
                     placed = true;
                     break;
                 }
             }
+
             if (!placed) {
                 List<Shippable> newBin = new ArrayList<>();
                 newBin.add(item);
                 bins.add(newBin);
             }
         }
+
         List<ShippingGroup> groups = new ArrayList<>();
-        for (List<Shippable> bin : bins) groups.add(new ShippingGroup(bin));
+        for (List<Shippable> bin : bins) {
+            groups.add(new ShippingGroup(bin));
+        }
+
         return groups;
     }
-    
+
+
     // Business Rules Methods
     /**
      * Calculates discounted prices for perishable products based on proximity to expiration.
@@ -297,23 +316,34 @@ class WarehouseAnalyzer {
  */
 class ShippingGroup {
     private final List<Shippable> products;
-    private final Double totalWeight;
+    private final BigDecimal totalWeight;
     private final BigDecimal totalShippingCost;
 
     public ShippingGroup(List<Shippable> products) {
         this.products = new ArrayList<>(products);
+
         this.totalWeight = products.stream()
-                .map(Shippable::weight)
-                .reduce(0.0, Double::sum);
+                .map(s -> Objects.requireNonNullElse(s.weight(), BigDecimal.ZERO))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         this.totalShippingCost = products.stream()
-                .map(Shippable::calculateShippingCost)
+                .map(s -> Objects.requireNonNullElse(s.calculateShippingCost(), BigDecimal.ZERO))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public List<Shippable> getProducts() { return new ArrayList<>(products); }
-    public Double getTotalWeight() { return totalWeight; }
-    public BigDecimal getTotalShippingCost() { return totalShippingCost; }
+    public List<Shippable> getProducts() {
+        return new ArrayList<>(products);
+    }
+
+    public BigDecimal getTotalWeight() {
+        return totalWeight;
+    }
+
+    public BigDecimal getTotalShippingCost() {
+        return totalShippingCost;
+    }
 }
+
 
 /**
  * Validation result for inventory constraints
