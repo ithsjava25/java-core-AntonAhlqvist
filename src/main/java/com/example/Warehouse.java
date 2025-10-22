@@ -27,12 +27,17 @@ public final class Warehouse {
     }
 
     public void addProduct(Product product) {
+        if (product == null) {
+            throw new IllegalArgumentException("Product cannot be null.");
+        } else if (getProductById(product.uuid()).isPresent()) {
+            throw new IllegalArgumentException("Product with that id already exists, use updateProduct for updates.");
+        }
         products.add(product);
     }
 
     public void updateProductPrice(UUID id, BigDecimal newPrice) {
         Product product = getProductById(id)
-                .orElseThrow();
+                .orElseThrow(() -> new NoSuchElementException("Product not found with id: " + id));
         product.price(newPrice);
         changedProducts.add(product);
     }
