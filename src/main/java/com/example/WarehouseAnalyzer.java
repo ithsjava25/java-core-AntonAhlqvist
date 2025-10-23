@@ -33,8 +33,8 @@ class WarehouseAnalyzer {
         if (minPrice == null) {
             throw new IllegalArgumentException("minPrice can't be null.");
         }
-        if (maxPrice == null || maxPrice.compareTo(BigDecimal.ZERO) < minPrice.compareTo(BigDecimal.ZERO)) {
-            throw new IllegalArgumentException("maxPrice can't be null, and must be higher than minPrice");
+        if (maxPrice == null || maxPrice.compareTo(minPrice) < 0) {
+            throw new IllegalArgumentException("maxPrice can't be null, and must be higher than or equal to minPrice");
         }
 
         for (Product p : warehouse.getProducts()) {
