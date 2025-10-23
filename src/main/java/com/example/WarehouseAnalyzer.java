@@ -29,6 +29,14 @@ class WarehouseAnalyzer {
      */
     public List<Product> findProductsInPriceRange(BigDecimal minPrice, BigDecimal maxPrice) {
         List<Product> result = new ArrayList<>();
+
+        if (minPrice == null) {
+            throw new IllegalArgumentException("minPrice can't be null.");
+        }
+        if (maxPrice == null || maxPrice.compareTo(minPrice) < 0) {
+            throw new IllegalArgumentException("maxPrice can't be null, and must be higher than or equal to minPrice");
+        }
+
         for (Product p : warehouse.getProducts()) {
             BigDecimal price = p.price();
             if (price.compareTo(minPrice) >= 0 && price.compareTo(maxPrice) <= 0) {
@@ -115,16 +123,17 @@ class WarehouseAnalyzer {
             List<Product> items = e.getValue();
             BigDecimal weightedSum = BigDecimal.ZERO;
             double weightSum = 0.0;
+
             for (Product p : items) {
                 if (p instanceof Shippable s) {
-                    double w = Optional.ofNullable(s.weight()).orElse(0.0);
-                    if (w > 0) {
-                        BigDecimal wBD = BigDecimal.valueOf(w);
-                        weightedSum = weightedSum.add(p.price().multiply(wBD));
-                        weightSum += w;
+                    BigDecimal weightValue = Optional.ofNullable(s.weight()).orElse(BigDecimal.ZERO);
+                    if (weightValue.compareTo(BigDecimal.ZERO) > 0) {
+                        weightedSum = weightedSum.add(p.price().multiply(weightValue));
+                        weightSum += weightValue.doubleValue();
                     }
                 }
             }
+
             BigDecimal avg;
             if (weightSum > 0) {
                 avg = weightedSum.divide(BigDecimal.valueOf(weightSum), 2, RoundingMode.HALF_UP);
@@ -134,32 +143,45 @@ class WarehouseAnalyzer {
             }
             result.put(cat, avg);
         }
+
         return result;
     }
-    
+
     /**
-     * Identifies products whose price deviates from the mean by more than the specified
-     * number of standard deviations. Uses population standard deviation over all products.
+     * Identifies products whose price deviates from the median by more than the specified
+     * multiple of the median absolute deviation (MAD). Uses a robust measure of spread
+     * that is less sensitive to extreme values than standard deviation.
      * Test expectation: with a mostly tight cluster and two extremes, calling with 2.0 returns the two extremes.
      *
-     * @param standardDeviations threshold in standard deviations (e.g., 2.0)
+     * @param k threshold in multiples of MAD (e.g., 2.0)
      * @return list of products considered outliers
      */
-    public List<Product> findPriceOutliers(double standardDeviations) {
+    public List<Product> findPriceOutliers(double k) {
         List<Product> products = warehouse.getProducts();
         int n = products.size();
         if (n == 0) return List.of();
-        double sum = products.stream().map(Product::price).mapToDouble(bd -> bd.doubleValue()).sum();
-        double mean = sum / n;
-        double variance = products.stream()
-                .map(Product::price)
-                .mapToDouble(bd -> Math.pow(bd.doubleValue() - mean, 2))
-                .sum() / n;
-        double std = Math.sqrt(variance);
-        double threshold = standardDeviations * std;
+        List<Double> prices = products.stream()
+                .map(p -> p.price().doubleValue())
+                .sorted()
+                .toList();
+        double median;
+        if (n % 2 == 0)
+            median = (prices.get(n / 2 - 1) + prices.get(n / 2)) / 2.0;
+        else
+            median = prices.get(n / 2);
+        List<Double> deviations = prices.stream()
+                .map(p -> Math.abs(p - median))
+                .sorted()
+                .toList();
+        double mad;
+        if (n % 2 == 0)
+            mad = (deviations.get(n / 2 - 1) + deviations.get(n / 2)) / 2.0;
+        else
+            mad = deviations.get(n / 2);
+        double threshold = k * mad;
         List<Product> outliers = new ArrayList<>();
         for (Product p : products) {
-            double diff = Math.abs(p.price().doubleValue() - mean);
+            double diff = Math.abs(p.price().doubleValue() - median);
             if (diff > threshold) outliers.add(p);
         }
         return outliers;
@@ -175,33 +197,49 @@ class WarehouseAnalyzer {
      * @return list of ShippingGroup objects covering all shippable products
      */
     public List<ShippingGroup> optimizeShippingGroups(BigDecimal maxWeightPerGroup) {
-        double maxW = maxWeightPerGroup.doubleValue();
+        BigDecimal maxW = maxWeightPerGroup;
         List<Shippable> items = warehouse.shippableProducts();
-        // Sort by descending weight (First-Fit Decreasing)
-        items.sort((a, b) -> Double.compare(Objects.requireNonNullElse(b.weight(), 0.0), Objects.requireNonNullElse(a.weight(), 0.0)));
+
+        items.sort((a, b) -> {
+            BigDecimal bw = Objects.requireNonNullElse(b.weight(), BigDecimal.ZERO);
+            BigDecimal aw = Objects.requireNonNullElse(a.weight(), BigDecimal.ZERO);
+            return bw.compareTo(aw);
+        });
+
         List<List<Shippable>> bins = new ArrayList<>();
+
         for (Shippable item : items) {
-            double w = Objects.requireNonNullElse(item.weight(), 0.0);
+            BigDecimal w = Objects.requireNonNullElse(item.weight(), BigDecimal.ZERO);
             boolean placed = false;
+
             for (List<Shippable> bin : bins) {
-                double binWeight = bin.stream().map(Shippable::weight).reduce(0.0, Double::sum);
-                if (binWeight + w <= maxW) {
+                BigDecimal binWeight = bin.stream()
+                        .map(s -> Objects.requireNonNullElse(s.weight(), BigDecimal.ZERO))
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                if (binWeight.add(w).compareTo(maxW) <= 0) {
                     bin.add(item);
                     placed = true;
                     break;
                 }
             }
+
             if (!placed) {
                 List<Shippable> newBin = new ArrayList<>();
                 newBin.add(item);
                 bins.add(newBin);
             }
         }
+
         List<ShippingGroup> groups = new ArrayList<>();
-        for (List<Shippable> bin : bins) groups.add(new ShippingGroup(bin));
+        for (List<Shippable> bin : bins) {
+            groups.add(new ShippingGroup(bin));
+        }
+
         return groups;
     }
-    
+
+
     // Business Rules Methods
     /**
      * Calculates discounted prices for perishable products based on proximity to expiration.
@@ -297,23 +335,34 @@ class WarehouseAnalyzer {
  */
 class ShippingGroup {
     private final List<Shippable> products;
-    private final Double totalWeight;
+    private final BigDecimal totalWeight;
     private final BigDecimal totalShippingCost;
 
     public ShippingGroup(List<Shippable> products) {
         this.products = new ArrayList<>(products);
+
         this.totalWeight = products.stream()
-                .map(Shippable::weight)
-                .reduce(0.0, Double::sum);
+                .map(s -> Objects.requireNonNullElse(s.weight(), BigDecimal.ZERO))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
         this.totalShippingCost = products.stream()
-                .map(Shippable::calculateShippingCost)
+                .map(s -> Objects.requireNonNullElse(s.calculateShippingCost(), BigDecimal.ZERO))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
-    public List<Shippable> getProducts() { return new ArrayList<>(products); }
-    public Double getTotalWeight() { return totalWeight; }
-    public BigDecimal getTotalShippingCost() { return totalShippingCost; }
+    public List<Shippable> getProducts() {
+        return new ArrayList<>(products);
+    }
+
+    public BigDecimal getTotalWeight() {
+        return totalWeight;
+    }
+
+    public BigDecimal getTotalShippingCost() {
+        return totalShippingCost;
+    }
 }
+
 
 /**
  * Validation result for inventory constraints

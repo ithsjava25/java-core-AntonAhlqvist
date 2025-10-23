@@ -249,7 +249,8 @@ class EdgeCaseTest {
                     .allSatisfy(group -> {
                         assertThat(group.getTotalWeight())
                                 .as("Each group should not exceed max weight of 10.0")
-                                .isLessThanOrEqualTo(10.0);
+                                .isLessThanOrEqualTo(new BigDecimal("10.0"));
+
                     });
 
             // Verify all products are included
