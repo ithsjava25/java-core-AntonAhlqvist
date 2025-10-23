@@ -29,6 +29,14 @@ class WarehouseAnalyzer {
      */
     public List<Product> findProductsInPriceRange(BigDecimal minPrice, BigDecimal maxPrice) {
         List<Product> result = new ArrayList<>();
+
+        if (minPrice == null) {
+            throw new IllegalArgumentException("minPrice can't be null.");
+        }
+        if (maxPrice == null || maxPrice.compareTo(BigDecimal.ZERO) < minPrice.compareTo(BigDecimal.ZERO)) {
+            throw new IllegalArgumentException("maxPrice can't be null, and must be higher than minPrice");
+        }
+
         for (Product p : warehouse.getProducts()) {
             BigDecimal price = p.price();
             if (price.compareTo(minPrice) >= 0 && price.compareTo(maxPrice) <= 0) {
@@ -138,16 +146,17 @@ class WarehouseAnalyzer {
 
         return result;
     }
-    
+
     /**
-     * Identifies products whose price deviates from the mean by more than the specified
-     * number of standard deviations. Uses population standard deviation over all products.
+     * Identifies products whose price deviates from the median by more than the specified
+     * multiple of the median absolute deviation (MAD). Uses a robust measure of spread
+     * that is less sensitive to extreme values than standard deviation.
      * Test expectation: with a mostly tight cluster and two extremes, calling with 2.0 returns the two extremes.
      *
-     * @param standardDeviations threshold in standard deviations (e.g., 2.0)
+     * @param k threshold in multiples of MAD (e.g., 2.0)
      * @return list of products considered outliers
      */
-    public List<Product> findPriceOutliers(double standardDeviations) {
+    public List<Product> findPriceOutliers(double k) {
         List<Product> products = warehouse.getProducts();
         int n = products.size();
         if (n == 0) return List.of();
@@ -169,7 +178,7 @@ class WarehouseAnalyzer {
             mad = (deviations.get(n / 2 - 1) + deviations.get(n / 2)) / 2.0;
         else
             mad = deviations.get(n / 2);
-        double threshold = standardDeviations * mad;
+        double threshold = k * mad;
         List<Product> outliers = new ArrayList<>();
         for (Product p : products) {
             double diff = Math.abs(p.price().doubleValue() - median);
@@ -191,7 +200,6 @@ class WarehouseAnalyzer {
         BigDecimal maxW = maxWeightPerGroup;
         List<Shippable> items = warehouse.shippableProducts();
 
-        // Sortera fallande efter vikt (tyngst först)
         items.sort((a, b) -> {
             BigDecimal bw = Objects.requireNonNullElse(b.weight(), BigDecimal.ZERO);
             BigDecimal aw = Objects.requireNonNullElse(a.weight(), BigDecimal.ZERO);
