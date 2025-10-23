@@ -29,7 +29,8 @@ public final class Warehouse {
     public void addProduct(Product product) {
         if (product == null) {
             throw new IllegalArgumentException("Product cannot be null.");
-        } else if (getProductById(product.uuid()).isPresent()) {
+        }
+        if (getProductById(product.uuid()).isPresent()) {
             throw new IllegalArgumentException("Product with that id already exists, use updateProduct for updates.");
         }
         products.add(product);
@@ -60,6 +61,10 @@ public final class Warehouse {
 
     public static Warehouse getInstance(String name) {
         return INSTANCES.computeIfAbsent(name, Warehouse::new);
+    }
+
+    public Set<Product> getChangedProducts() {
+        return Collections.unmodifiableSet(changedProducts);
     }
 
     public List<Perishable> expiredProducts() {
