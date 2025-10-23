@@ -21,10 +21,11 @@ public final class Category {
         if (name == null) {
             throw new IllegalArgumentException("Category name can't be null");
         }
+        name = name.trim();
         if (name.isBlank()) {
             throw new IllegalArgumentException("Category name can't be blank");
         }
-        String formattedName = name.substring(0, 1).toUpperCase() + name.substring(1).trim();
+        String formattedName = name.substring(0, 1).toUpperCase() + name.substring(1);
         return CACHE.computeIfAbsent(formattedName, Category::new);
     }
 }
